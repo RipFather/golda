@@ -1,0 +1,207 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no" />
+<title>Standoff 2 — Генератор голды</title>
+<style>
+  :root{
+    --bg:#0b1020;
+    --card:#0f1724;
+    --accent:#f59e0b; /* amber */
+    --muted:#94a3b8;
+    --glass: rgba(255,255,255,0.04);
+  }
+  *{box-sizing:border-box}
+  body{margin:0; font-family:Inter, Roboto, system-ui, -apple-system, 'Segoe UI', 'Helvetica Neue', Arial; background: radial-gradient(1200px 600px at 10% 10%, rgba(245,158,11,0.06), transparent), linear-gradient(180deg,#051026 0%, #071226 60%); color:#e6eef8; min-height:100vh; display:flex; align-items:center; justify-content:center; padding:20px}
+  .wrap{width:100%; max-width:420px}
+  .card{background:linear-gradient(180deg, rgba(255,255,255,0.03), rgba(255,255,255,0.02)); border-radius:18px; padding:20px; box-shadow:0 10px 30px rgba(2,6,23,0.7); border:1px solid rgba(255,255,255,0.03)}
+  header{display:flex; align-items:center; gap:12px}
+  .logo{width:56px; height:56px; border-radius:12px; background:linear-gradient(135deg,var(--accent),#ef4444); display:flex; align-items:center; justify-content:center; font-weight:700; font-size:20px; color:#071226}
+  h1{font-size:18px;margin:0}
+  p.lead{color:var(--muted); font-size:13px; margin:6px 0 14px}
+  form{display:grid; gap:12px}
+  .input{background:var(--glass); border-radius:12px; padding:12px; display:flex; gap:8px; align-items:center; border:1px solid rgba(255,255,255,0.025)}
+  .input input[type="text"], .input input[type="number"], .input input[type="password"]{background:transparent; border:0; outline:none; color:inherit; width:100%; font-size:15px}
+  .btn{display:inline-block; width:100%; padding:12px; border-radius:12px; text-align:center; font-weight:600; background:linear-gradient(90deg,var(--accent),#ef4444); color:#071226; border:0; box-shadow:0 6px 18px rgba(245,158,11,0.12); font-size:15px}
+  .btn.secondary{background:transparent; color:var(--accent); border:1px solid rgba(245,158,11,0.12)}
+  .center{display:flex; gap:8px; align-items:center; justify-content:center}
+
+  /* error */
+  .error{color:#ffb4b4; background:rgba(255,80,80,0.06); padding:8px 10px; border-radius:10px; font-size:13px; border:1px solid rgba(255,80,80,0.08)}
+
+  /* loader screen */
+  .stage{display:none; text-align:center}
+  .stage.active{display:block}
+  .progress-wrap{margin-top:18px}
+  .progress{height:12px; background:rgba(255,255,255,0.04); border-radius:12px; overflow:hidden}
+  .bar{height:100%; width:0%; background:linear-gradient(90deg,var(--accent),#ef4444); transition:width 400ms linear}
+  .log{margin-top:12px; text-align:left; max-height:140px; overflow:auto; padding:8px; background:rgba(2,6,23,0.4); border-radius:10px; font-family:monospace; font-size:12px}
+  .small{font-size:12px; color:var(--muted)}
+  footer{margin-top:12px; text-align:center; font-size:12px; color:var(--muted)}
+  .ghost{opacity:0.7; font-size:13px}
+  .pill{display:inline-block; padding:6px 10px; border-radius:999px; background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.02); font-size:12px}
+
+  @media (max-width:420px){ .card{padding:16px} }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="card" role="application">
+    <header>
+      <div class="logo">S2</div>
+      <div style="flex:1">
+        <h1>Standoff 2 — Генератор голды</h1>
+        <p class="lead">Введите данные ниже, чтобы продолжить.</p>
+      </div>
+    </header>
+
+    <!-- STEP 1: form -->
+    <div id="step-form" class="stage active">
+      <form id="mainForm" onsubmit="return false">
+        <label class="input">
+          <input id="nick" type="text" placeholder="Введите никнейм" required autocomplete="off" />
+        </label>
+
+        <label class="input">
+          <input id="key" type="password" placeholder="Ключ доступа (например: standoffgold)" required autocomplete="off" />
+        </label>
+
+        <div id="keyError" style="display:none; margin-top:-6px"></div>
+
+        <label class="input">
+          <input id="amount" type="number" placeholder="Сколько голды (макс 10000)" min="1" max="10000" required />
+        </label>
+
+        <div style="display:flex; gap:8px">
+          <button id="startBtn" class="btn" type="button">Запустить генератор</button>
+        </div>
+      </form>
+    </div>
+
+    <!-- STEP 2: loading -->
+    <div id="step-loading" class="stage">
+      <h2 style="margin-top:8px; margin-bottom:6px">Процесс генерации</h2>
+      <div class="pill">Ник: <span id="showNick">—</span></div>
+      <div style="height:8px"></div>
+      <div class="progress-wrap">
+        <div class="progress" aria-hidden><div class="bar" id="progressBar"></div></div>
+      </div>
+      <div class="log" id="logArea" aria-live="polite"></div>
+      <div style="height:10px"></div>
+      <div class="small">Пожалуйста, не закрывайте страницу. Процесс займет примерно 1 минуту.</div>
+    </div>
+
+    <!-- STEP 3: finished & loop -->
+    <div id="step-done" class="stage">
+      <h2>Готово — почти</h2>
+      <p class="ghost">Мы успешно подключились и заполнили ваш аккаунт голдой.</p>
+      <div style="display:flex; gap:8px; margin-top:10px">
+        <button id="againBtn" class="btn">Загрузить ещё раз</button>
+        <button id="backBtn" class="btn secondary">Вернуться</button>
+      </div>
+      <div class="muted" style="margin-top:10px">Но перед тем как окончательно завершить — требуется дополнительный запуск.</div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+(function(){
+  const VALID_KEY = 'standoffgold'; // required key
+  const startBtn = document.getElementById('startBtn');
+  const againBtn = document.getElementById('againBtn');
+  const backBtn = document.getElementById('backBtn');
+  const stepForm = document.getElementById('step-form');
+  const stepLoading = document.getElementById('step-loading');
+  const stepDone = document.getElementById('step-done');
+  const nickInput = document.getElementById('nick');
+  const keyInput = document.getElementById('key');
+  const amountInput = document.getElementById('amount');
+  const showNick = document.getElementById('showNick');
+  const progressBar = document.getElementById('progressBar');
+  const logArea = document.getElementById('logArea');
+  const keyError = document.getElementById('keyError');
+
+  function showStage(el){ [stepForm, stepLoading, stepDone].forEach(s=>s.classList.remove('active')); el.classList.add('active'); }
+  function log(msg){ const row = document.createElement('div'); row.textContent = (new Date()).toLocaleTimeString() + ' — ' + msg; logArea.appendChild(row); logArea.scrollTop = logArea.scrollHeight; }
+
+  function showKeyError(msg){ keyError.style.display = 'block'; keyError.className = 'error'; keyError.textContent = msg; }
+  function hideKeyError(){ keyError.style.display = 'none'; keyError.textContent = ''; }
+
+  function validate(){
+    hideKeyError();
+    const nick = nickInput.value.trim();
+    const key = keyInput.value.trim();
+    const amount = Number(amountInput.value);
+    if(!nick) { alert('Введите никнейм'); return false }
+    if(!key) { showKeyError('Ключ не может быть пустым'); return false }
+    if(key !== VALID_KEY){ showKeyError('Неверный ключ доступа'); return false }
+    if(!amount || amount<=0) { alert('Введите корректное количество голды'); return false }
+    if(amount>10000){ alert('Максимум — 10000'); return false }
+    return true
+  }
+
+  function startProcess(){
+    if(!validate()) return;
+    showNick.textContent = nickInput.value.trim();
+    showStage(stepLoading);
+    progressBar.style.width = '0%';
+    logArea.innerHTML = '';
+
+    const totalMs = 60_000;
+    const start = Date.now();
+    const stages = [
+      {t:0, text:'Инициализация подключения к серверам S2...'},
+      {t:6000, text:'Установка защищённого канала...'},
+      {t:14000, text:'Подбор сессии и проверка ключа...'},
+      {t:23000, text:'Проверка безопасности аккаунта...'},
+      {t:32000, text:'Подбор пароля (эмулируется, может занять время)...'},
+      {t:42000, text:'Создание виртуальной транзакции...'},
+      {t:52000, text:'Наполнение голдой (это может занять несколько шагов)...'},
+      {t:59000, text:'Финализация и проверка целостности данных...'}
+    ];
+
+    const stageTimers = [];
+    stages.forEach(s=>{
+      const id = setTimeout(()=> log(s.text), s.t);
+      stageTimers.push(id);
+    });
+
+    let rafId = null;
+    function frame(){
+      const elapsed = Date.now() - start;
+      const pct = Math.min(1, elapsed/totalMs);
+      const eased = 1 - Math.pow(1 - pct, 2);
+      progressBar.style.width = Math.round(eased*100) + '%';
+      if(elapsed < totalMs){ rafId = requestAnimationFrame(frame); }
+      else {
+        progressBar.style.width = '100%';
+        log('Процесс завершён. Пожалуйста, подтвердите следующий шаг.');
+        setTimeout(()=> showStage(stepDone), 1200);
+      }
+    }
+    rafId = requestAnimationFrame(frame);
+
+    stepLoading._cleanup = ()=>{
+      stageTimers.forEach(clearTimeout);
+      if(rafId) cancelAnimationFrame(rafId);
+    }
+  }
+
+  startBtn.addEventListener('click', startProcess);
+
+  againBtn.addEventListener('click', ()=>{
+    showStage(stepLoading);
+    setTimeout(()=> startProcess(), 400);
+  });
+
+  backBtn.addEventListener('click', ()=>{
+    if(stepLoading._cleanup) stepLoading._cleanup();
+    showStage(stepForm);
+  });
+
+})();
+</script>
+</body>
+</html>
